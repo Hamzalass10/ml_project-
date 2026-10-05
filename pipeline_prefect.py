@@ -16,7 +16,8 @@ Usage :
 import argparse
 import subprocess
 import sys
-
+import os
+import shutil
 from prefect import flow, task
 
 from model_pipeline import (
@@ -28,7 +29,9 @@ from model_pipeline import (
 )
 
 CSV_PATH = "Churn_Modelling.csv"
-
+# URL du repo Git du projet
+REPO_URL = "https://github.com/Hamzalass10/ml_project-.git"
+CLONE_DIR = "/tmp/ml_project_clone"
 # Fichiers ciblés pour les étapes qualité / sécurité
 CODE_FILES = ["model_pipeline.py", "main.py", "pipeline_prefect.py"]
 
@@ -43,6 +46,18 @@ def install_dependencies():
         [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
         check=True,
     )
+
+
+@task(name="clone-repository", log_prints=True)
+def clone_repository():
+    """Clone le repo Git du projet dans un dossier temporaire."""
+    if os.path.exists(CLONE_DIR):
+        shutil.rmtree(CLONE_DIR)
+    subprocess.run(
+        ["git", "clone", REPO_URL, CLONE_DIR],
+        check=True,
+    )
+    print(f"Repo cloné dans {CLONE_DIR}")
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +160,10 @@ def code_flow():
 
 @flow(name="all", log_prints=True)
 def all_flow():
-    """Pipeline complet : install → code → prepare → train → save → evaluate."""
+    """Pipeline complet : clone → install → code → prepare → train → save → evaluate."""
+    clone_repository()  # ← nouvelle étape
     install_dependencies()
-    code_flow()  # ← intégré comme sous-flow
+    code_flow()
     X_train, X_test, y_train, y_test, scaler, _ = prepare_data_task()
     model = train_model_task(X_train, y_train)
     save_model_task(model, scaler)
