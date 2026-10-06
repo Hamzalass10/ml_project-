@@ -12,6 +12,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import mlflow
+import mlflow.sklearn
+
+# Configuration MLflow
+MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+MLFLOW_EXPERIMENT_NAME = "churn-modelling"
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
 
 # ---------------------------------------------------------------------------
@@ -63,11 +72,24 @@ def prepare_data(
 # ---------------------------------------------------------------------------
 def train_model(X_train, y_train, n_estimators: int = 100, random_state: int = 42):
     """
-    Entraîne un RandomForestClassifier (cellules 33-34 du notebook).
-    Retourne le modèle entraîné.
+    Entraîne un RandomForestClassifier et logge l'expérience dans MLflow.
     """
-    model = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state)
-    model.fit(X_train, y_train)
+    with mlflow.start_run(run_name="train-rf"):
+        mlflow.log_param("n_estimators", n_estimators)
+        mlflow.log_param("random_state", random_state)
+        mlflow.log_param("model_type", "RandomForestClassifier")
+
+        model = RandomForestClassifier(
+            n_estimators=n_estimators, random_state=random_state
+        )
+        model.fit(X_train, y_train)
+
+        mlflow.sklearn.log_model(
+            model,
+            name="model",
+            skops_trusted_types=["sklearn.tree._tree.Tree"],
+        )
+
     return model
 
 
@@ -76,14 +98,20 @@ def train_model(X_train, y_train, n_estimators: int = 100, random_state: int = 4
 # ---------------------------------------------------------------------------
 def evaluate_model(model, X_test, y_test, verbose: bool = True):
     """
-    Évalue le modèle (cellules 36-41 du notebook).
-    Retourne un dict avec accuracy, rapport de classification et matrice.
+    Évalue le modèle et logge les métriques dans MLflow.
     """
     y_pred = model.predict(X_test)
 
     acc = accuracy_score(y_test, y_pred)
     report = classification_report(y_test, y_pred, output_dict=True)
     cm = confusion_matrix(y_test, y_pred)
+
+    with mlflow.start_run(run_name="evaluate-rf"):
+        mlflow.log_metric("accuracy", acc)
+        mlflow.log_metric("precision_class1", report["1"]["precision"])
+        mlflow.log_metric("recall_class1", report["1"]["recall"])
+        mlflow.log_metric("f1_class1", report["1"]["f1-score"])
+        mlflow.log_metric("macro_avg_f1", report["macro avg"]["f1-score"])
 
     if verbose:
         print(f"Accuracy : {acc:.4f}")
